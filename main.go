@@ -125,7 +125,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "boot"
 	app.Usage = "secret management for containers via S3, IAM, and KMS"
-	app.Version = "0.1.0"
+	app.Version = "0.2.0"
 	app.Commands = []cli.Command{
 		{
 			Name:   "container",
