@@ -22,3 +22,13 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+# ignore intellij files
+.idea
+*.iml
+*.ipr
+*.iws
+
+# ignore generated files
+boot
+test.env
