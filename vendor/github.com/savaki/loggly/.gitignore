@@ -1,0 +1,9 @@
+# ignore teamcity
+/.idea
+/.idea_modules
+/*.iml
+/*.ipr
+/*.iws
+
+# ignore binaries
+/loggly
