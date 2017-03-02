@@ -13,7 +13,7 @@ go get github.com/savaki/boot
 Push contents of the local config directory to the specified S3 bucket and KMS key
 
 ```
-boot push --dir config --s3-bucket my-bucket --s3-prefix configs/my-app --kms
+boot push --dir config --s3 s3://my-bucket/my-app --kms 12315-121251-1287982-9280912
 ```
 
 ### Environment Variables
@@ -29,9 +29,8 @@ AWS_SECRET_ACCESS_KEY | AWS secret access key; not required if using roles | | |
 BOOT_ENV  | Name of environment | production, staging, etc | dev | -
 BOOT_FILE | Name of file containing environment variables | | boot.env | -
 BOOT_REVISION | Which version of the secret to use | 20170301.1607 | latest | -
-BOOT_KMS_ID | KMS ID to use for encryption/decryption |  | | yes
-BOOT_S3_BUCKET | AWS S3 bucket to read/write secrets to | my-bucket-name | | yes
-BOOT_PREFIX |  AWS S3 path to prepend to the secret dir | path/to/secrets | | -
+BOOT_KMS | KMS ID to use for encryption/decryption |  | | yes
+BOOT_S3 | AWS S3 bucket to read/write secrets to | s3://my-bucket/app-name | | yes
 BOOT_DIR | local directory to read/write contents to | / | . | -
 BOOT_VERBOSE | print additional log messages | true | false | -
 BOOT_DRYRUN_VERBOSE | go through the motions, but don't upload/download anything| true | false | -

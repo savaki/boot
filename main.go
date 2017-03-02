@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,6 +24,10 @@ import (
 	"github.com/urfave/cli"
 )
 
+var (
+	reS3 = regexp.MustCompile("s3://([^/]+)(/(.*))?")
+)
+
 const (
 	EncSuffix        = ".enc"
 	maxEncryptedSize = 4000
@@ -33,16 +38,19 @@ type Options struct {
 	Env         string
 	File        string
 	Revision    string
-	KmsID       string
-	S3Bucket    string
-	S3Prefix    string
+	KMS         string
+	S3Path      string
 	Dir         string
 	Verbose     bool
 	DryRun      bool
 	LogglyToken string
 }
 
-var opts Options
+var (
+	opts     Options
+	s3bucket string
+	s3prefix string
+)
 
 func main() {
 	var logglyFlag = cli.StringFlag{
@@ -84,20 +92,14 @@ func main() {
 		cli.StringFlag{
 			Name:        "kms",
 			Usage:       "[REQUIRED] the kms key id",
-			EnvVar:      "BOOT_KMS_ID",
-			Destination: &opts.KmsID,
+			EnvVar:      "BOOT_KMS",
+			Destination: &opts.KMS,
 		},
 		cli.StringFlag{
-			Name:        "s3-bucket",
-			Usage:       "[REQUIRED] name of the s3-bucket to read from",
-			EnvVar:      "BOOT_S3_BUCKET",
-			Destination: &opts.S3Bucket,
-		},
-		cli.StringFlag{
-			Name:        "s3-prefix",
-			Usage:       "the path prefix for s3",
-			EnvVar:      "BOOT_PREFIX",
-			Destination: &opts.S3Prefix,
+			Name:        "s3",
+			Usage:       "[REQUIRED] S3 path prefix to store files to s3://bucket-name/optional-path",
+			EnvVar:      "BOOT_S3",
+			Destination: &opts.S3Path,
 		},
 		cli.StringFlag{
 			Name:        "dir",
@@ -149,6 +151,13 @@ func main() {
 
 func Do(fn func(*kms.KMS, *s3.S3, string, ...string) error) func(_ *cli.Context) error {
 	return func(c *cli.Context) error {
+		matches := reS3.FindAllStringSubmatch(opts.S3Path, -1)
+		if len(matches) != 1 {
+			log.Fatalln(fmt.Errorf("Invalid s3 path, %v;  Expected s3://bucket/path", s3bucket))
+		}
+		s3bucket = matches[0][1]
+		s3prefix = matches[0][3]
+
 		root, err := filepath.Abs(opts.Dir)
 		if err != nil {
 			log.Fatalln(errors.Wrapf(err, "Unable to determine absolute path for dir, %v", opts.Dir))
@@ -172,7 +181,7 @@ func Do(fn func(*kms.KMS, *s3.S3, string, ...string) error) func(_ *cli.Context)
 }
 
 func s3Key(revision, path string) string {
-	return filepath.Join(opts.Env, opts.S3Prefix, revision, path)
+	return filepath.Join(s3prefix, opts.Env, revision, path)
 }
 
 func filename(revision, root, key string) string {
@@ -261,7 +270,7 @@ func uploadFileFunc(kmsClient *kms.KMS, s3Client *s3.S3, root string) filepath.W
 				}
 
 				out, err := kmsClient.Encrypt(&kms.EncryptInput{
-					KeyId:     aws.String(opts.KmsID),
+					KeyId:     aws.String(opts.KMS),
 					Plaintext: data,
 				})
 				if err != nil {
@@ -276,9 +285,9 @@ func uploadFileFunc(kmsClient *kms.KMS, s3Client *s3.S3, root string) filepath.W
 				key += EncSuffix
 			}
 
-			fmt.Printf("cp %v s3://%v/%v\n", rel, opts.S3Bucket, key)
+			fmt.Printf("cp %v s3://%v/%v\n", rel, s3bucket, key)
 			_, err = s3Client.PutObject(&s3.PutObjectInput{
-				Bucket: aws.String(opts.S3Bucket),
+				Bucket: aws.String(s3bucket),
 				Key:    aws.String(key),
 				Body:   seeker,
 			})
@@ -298,7 +307,7 @@ func pull(kmsClient *kms.KMS, s3Client *s3.S3, root string, _ ...string) error {
 	prefix := s3Key(opts.Revision, "")
 
 	out, err := s3Client.ListObjects(&s3.ListObjectsInput{
-		Bucket: aws.String(opts.S3Bucket),
+		Bucket: aws.String(s3bucket),
 		Prefix: aws.String(prefix),
 	})
 	if err != nil {
@@ -311,7 +320,7 @@ func pull(kmsClient *kms.KMS, s3Client *s3.S3, root string, _ ...string) error {
 		}
 
 		out, err := s3Client.GetObject(&s3.GetObjectInput{
-			Bucket: aws.String(opts.S3Bucket),
+			Bucket: aws.String(s3bucket),
 			Key:    item.Key,
 		})
 		if err != nil {
@@ -342,7 +351,7 @@ func pullFile(kmsClient *kms.KMS, root, key string, r io.ReadCloser) error {
 func saveFile(revision, root, key string, r io.Reader) error {
 	path := filename(revision, root, key)
 	os.MkdirAll(filepath.Dir(path), 0755)
-	fmt.Printf("saving s3://%v/%v to %v\n", opts.S3Bucket, key, path)
+	fmt.Printf("saving s3://%v/%v to %v\n", s3bucket, key, path)
 
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
@@ -377,7 +386,7 @@ func decryptFile(kmsClient *kms.KMS, root, key string, r io.Reader) error {
 	path = strings.Replace(path, EncSuffix, "", -1)
 
 	os.MkdirAll(filepath.Dir(path), 0755)
-	fmt.Printf("saving s3://%v/%v to %v\n", opts.S3Bucket, key, path)
+	fmt.Printf("saving s3://%v/%v to %v\n", s3bucket, key, path)
 	if opts.DryRun {
 		return nil
 	}
