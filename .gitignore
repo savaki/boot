@@ -32,3 +32,4 @@ _testmain.go
 # ignore generated files
 boot
 test.env
+target
